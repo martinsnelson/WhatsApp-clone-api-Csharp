@@ -21,7 +21,12 @@
         "MemorySize": 128,
         "Timeout": 30,
         "Policies": [
-          "AWSLambda_FullAccess"
+          "AWSLambdaBasicExecutionRole",
+          {
+            "DynamoDBCrudPolicy": {
+              "TableName": "MessagesTable"
+            }
+          }
         ],
         "Events": {
           "ProxyResource": {
