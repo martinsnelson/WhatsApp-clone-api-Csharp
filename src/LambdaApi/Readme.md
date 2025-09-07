@@ -128,6 +128,7 @@ dotnet new serverless.AspNetCoreWebAPI --name LambdaApi
 
 Packages Add:
 dotnet add package AWSSDK.DynamoDBv2
+dotnet add package Swashbuckle.AspNetCore
 
 Run APP with SLN:
 1. dotnet restore LambdaApi.sln

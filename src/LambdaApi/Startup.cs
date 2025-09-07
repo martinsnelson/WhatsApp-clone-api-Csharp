@@ -16,6 +16,7 @@ public class Startup
     {
         services.AddControllers();
         services.AddSingleton<IAmazonDynamoDB, AmazonDynamoDBClient>(); // TODO - Validar necessidade de usar Singleton.
+        services.AddSwaggerGen();
     }
 
     // This method gets called by the runtime. Use this method to configure the HTTP request pipeline
@@ -24,6 +25,13 @@ public class Startup
         if (env.IsDevelopment())
         {
             app.UseDeveloperExceptionPage();
+            
+            app.UseSwagger();
+            app.UseSwaggerUI(c =>
+            {
+                c.SwaggerEndpoint("/swagger/v1/swagger.json", "LambdaApi v1");
+                c.RoutePrefix = string.Empty; // Swagger na raiz
+            });
         }
 
         app.UseHttpsRedirection();
