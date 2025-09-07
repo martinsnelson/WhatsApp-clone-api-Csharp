@@ -136,3 +136,130 @@ Run APP with SLN:
 3. cd folder API
 4. dotnet run --project LambdaApi.csproj
 
+
+🔹 Fluxo Técnico de Mensagens
+[Remetente (App)] 
+       |
+       | 1️⃣ Criptografa mensagem (Signal / E2EE)
+       |    messageId, senderId, recipientId, content (criptografado)
+       v
+[Servidor WhatsApp / Backend]
+       |
+       | Recebe mensagem → armazena metadados
+       | Retorna ACK ao remetente
+       v
+[Remetente] -----> marca ✓ (enviado)
+       |
+       | 2️⃣ Entrega para destinatário (quando online)
+       v
+[Destinatário (App)]
+       |
+       | Recebe mensagem criptografada
+       | Envia delivery receipt (criptografado) ao servidor
+       v
+[Servidor] 
+       |
+       | Atualiza status entrega → envia update para remetente
+       v
+[Remetente] -----> marca ✓✓ (entregue)
+       |
+       | 3️⃣ Destinatário abre conversa
+       v
+[Destinatário]
+       |
+       | Envia read receipt (criptografado) ao servidor
+       v
+[Servidor]
+       |
+       | Atualiza status leitura → envia update para remetente
+       v
+[Remetente] -----> marca ✓✓ azul (lida)
+
+
+🔹 Metadados por mensagem //TODO - Metadados por mensagem
+
+| Metadado      | Função                          | Armazenamento / Segurança                   |
+| ------------- | ------------------------------- | ------------------------------------------- |
+| `messageId`   | Identificador único da mensagem | Gerado no app, usado para todos os receipts |
+| `senderId`    | Quem enviou a mensagem          | Criptografado ou apenas ID no servidor      |
+| `recipientId` | Quem vai receber                | Criptografado                               |
+| `sentAt`      | Timestamp do envio              | Gravado no servidor                         |
+| `deliveredAt` | Timestamp da entrega            | Recebido via delivery receipt               |
+| `readAt`      | Timestamp da leitura            | Recebido via read receipt, opcional         |
+| `status`      | `sent`, `delivered`, `read`     | Atualizado pelo servidor                    |
+
+
+✅ Resumo técnico seguro e robusto: //TODO - Seguro e robusto
+
+Mensagem criptografada ponta a ponta → servidor nunca lê.
+✓: servidor recebeu a mensagem (ACK).
+✓✓: destinatário recebeu a mensagem (delivery receipt).
+✓✓ azul: destinatário leu a mensagem (read receipt).
+Logs, timestamps e metadados são gravados de forma auditável, sem violar a privacidade.
+
+
+1️⃣ Mensagem enviada (✓)
+
+Como tratar tecnicamente:
+Criptografia ponta a ponta (E2EE):
+Cada mensagem é criptografada no dispositivo do remetente usando uma chave única compartilhada com o destinatário (ex.: protocolo Signal).
+Envio ao servidor:
+A mensagem vai somente criptografada, sem possibilidade do servidor ler.
+Confirmação de recebimento do servidor:
+O servidor grava a mensagem no banco e retorna um ACK ao cliente remetente.
+Esse ACK é o que gera o primeiro tique (✓).
+Boas práticas:
+Uso de mensagens idempotentes: cada mensagem tem um messageId único para evitar duplicatas.
+Logs de auditoria de recebimento, sem armazenar conteúdo.
+
+
+2️⃣ Mensagem entregue (✓✓)
+
+Como tratar tecnicamente:
+Quando o destinatário estiver online, o servidor envia a mensagem para o app dele.
+O app do destinatário reconhece a mensagem e envia de volta um delivery receipt criptografado.
+O servidor registra internamente que a mensagem foi entregue e envia um update para o remetente (✓✓ cinza).
+Boas práticas:
+Retry automático em caso de falha (destinatário offline).
+Garantir ordem de mensagens via timestamps e sequência.
+Persistência temporária: mensagens pendentes devem expirar após certo tempo se não forem entregues.
+
+
+3️⃣ Mensagem lida (✓✓ azul)
+
+Como tratar tecnicamente:
+Quando o destinatário abre a conversa:
+O app envia um read receipt ao servidor (também criptografado).
+O servidor repassa a confirmação de leitura para o remetente.
+O remetente só marca os tiques azuis após receber esse recibo.
+Boas práticas:
+Respeitar configurações de privacidade (ex.: desativar confirmações de leitura).
+Garantir que read receipts sejam criptografados e vinculados à mensagem correta.
+Registrar hora da leitura como metadado, sem acessar o conteúdo da mensagem.
+
+
+4️⃣ Casos especiais
+
+Modo avião / sem internet:
+Mensagem permanece com ✓ até que o dispositivo do destinatário receba.
+Bloqueio:
+Servidor rejeita a entrega, o remetente só vê ✓.
+Confirmação de leitura desativada:
+Mensagens entregues → ✓✓ cinza; nunca aparecem azuis.
+Grupos:
+✓✓ cinza: todos receberam.
+✓✓ azul: todos leram.
+O servidor mantém tracking de delivery/read por usuário em grupo.
+
+
+5️⃣ Armazenamento de metadados seguro
+
+Para implementar de forma robusta:
+Metadado	Função	Segurança / Observações
+messageId	Identificação única da mensagem	Criptografia ponta a ponta
+senderId	ID do remetente	Sem expor no corpo da mensagem
+recipientId	ID do destinatário	Criptografado
+sentAt	Timestamp de envio	Servidor confiável
+deliveredAt	Timestamp de entrega	Mantido sem acessar conteúdo
+readAt	Timestamp de leitura	Opcional, respeitando privacidade
+status	sent/delivered/read	Atualizado com recibos criptografados
