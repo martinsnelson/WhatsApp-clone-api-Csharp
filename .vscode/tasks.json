@@ -1,0 +1,30 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Restore Solution",
+            "command": "dotnet",
+            "type": "process",
+            "args": [
+                "restore",
+                "LambdaApi.sln"
+            ],
+            "problemMatcher": "$msCompile",
+            "group": "build"
+        },
+        {
+            "label": "Build Solution",
+            "command": "dotnet",
+            "type": "process",
+            "args": [
+                "build",
+                "LambdaApi.sln",
+                "--configuration",
+                "Debug"
+            ],
+            "problemMatcher": "$msCompile",
+            "group": "build",
+            "dependsOn": "Restore Solution"
+        }
+    ]
+}

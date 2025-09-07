@@ -1,0 +1,15 @@
+### MessagesController
+
+### GET - Listar mensagens
+GET https://224kb3ec07.execute-api.sa-east-1.amazonaws.com/Prod/api/messages/list
+
+### GET - Listar values
+GET https://224kb3ec07.execute-api.sa-east-1.amazonaws.com/Prod/api/values
+
+### POST - Criar mensagem
+POST https://224kb3ec07.execute-api.sa-east-1.amazonaws.com/Prod/api/messages/create
+Content-Type: application/json
+
+{
+  "message": "Hello World"
+}

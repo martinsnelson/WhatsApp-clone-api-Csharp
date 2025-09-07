@@ -1,0 +1,8 @@
+{
+  "httpMethod": "POST",
+  "path": "/api/messages/create",
+  "headers": {
+    "Content-Type": "application/json"
+  },
+  "body": "{ \"message\": \"Hello Test\" }"
+}

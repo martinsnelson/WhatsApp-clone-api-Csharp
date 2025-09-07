@@ -1,0 +1,12 @@
+### MessagesController
+
+### GET - Listar mensagens
+GET https://localhost:56355/api/messages/list
+
+### POST - Criar mensagem
+POST https://localhost:56355/api/messages/create
+Content-Type: application/json
+
+{
+  "message": "Hello World"
+}
