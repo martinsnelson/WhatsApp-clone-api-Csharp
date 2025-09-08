@@ -93,41 +93,39 @@ public class MessagesController : ControllerBase
     /// </summary>
     /// <param name="id"></param>
     /// <returns></returns>
-    // [HttpPost("{id}/delivered")]
-    // public async Task<IActionResult> MarkDelivered(string id)
-    // {
-    //     var updateReq = new UpdateItemRequest
-    //     {
-    //         TableName = "MessagesTable",
-    //         Key = new Dictionary<string, AttributeValue> { ["MessageId"] = new AttributeValue { S = id } },
-    //         ExpressionAttributeNames = new Dictionary<string, string> { ["#S"] = "Status", ["#DA"] = "DeliveredAt", ["#V"] = "Version" },
-    //         ExpressionAttributeValues = new Dictionary<string, AttributeValue>
-    //         {
-    //             [":del"] = new AttributeValue { S = "delivered" },
-    //             [":now"] = new AttributeValue { S = DateTime.UtcNow.ToString("o") },
-    //             [":one"] = new AttributeValue { N = "1" },
-    //             [":read"] = new AttributeValue { S = "read" }
-    //         },
-    //         UpdateExpression = "SET #S = :del, #DA = :now, #V = if_not_exists(#V, :zero) + :one",
-    //         ConditionExpression = "attribute_not_exists(#S) OR #S <> :read"
-    //     };
+    [HttpPost("{id}/delivered")]
+    public async Task<IActionResult> MarkDelivered(string id)
+    {
+        var updateReq = new UpdateItemRequest
+        {
+            TableName = "MessagesTable",
+            Key = new Dictionary<string, AttributeValue> { ["MessageId"] = new AttributeValue { S = id } },
+            ExpressionAttributeNames = new Dictionary<string, string> { ["#S"] = "Status", ["#DA"] = "DeliveredAt", ["#V"] = "Version" },
+            ExpressionAttributeValues = new Dictionary<string, AttributeValue>
+            {
+                [":del"] = new AttributeValue { S = "delivered" },
+                [":now"] = new AttributeValue { S = DateTime.UtcNow.ToString("o") },
+                [":one"] = new AttributeValue { N = "1" },
+                [":read"] = new AttributeValue { S = "read" }
+            },
+            UpdateExpression = "SET #S = :del, #DA = :now, #V = if_not_exists(#V, :zero) + :one",
+            ConditionExpression = "attribute_not_exists(#S) OR #S <> :read"
+        };
 
+        // add zero value used in UpdateExpression
+        updateReq.ExpressionAttributeValues[":zero"] = new AttributeValue { N = "0" };
 
-    //     // add zero value used in UpdateExpression
-    //     updateReq.ExpressionAttributeValues[":zero"] = new AttributeValue { N = "0" };
-
-
-    //     try
-    //     {
-    //         await _dynamoDb.UpdateItemAsync(updateReq);
-    //         return Ok();
-    //     }
-    //     catch (Amazon.DynamoDBv2.Model.ConditionalCheckFailedException)
-    //     {
-    //         // já estava em read -> ignorar
-    //         return Ok();
-    //     }
-    // }
+        try
+        {
+            await _IAmazonDynamoDB.UpdateItemAsync(updateReq);
+            return Ok();
+        }
+        catch (Amazon.DynamoDBv2.Model.ConditionalCheckFailedException)
+        {
+            // já estava em read -> ignorar
+            return Ok();
+        }
+    }
 
 
     /// <summary>
@@ -135,36 +133,36 @@ public class MessagesController : ControllerBase
     /// </summary>
     /// <param name="id"></param>
     /// <returns></returns>
-    // [HttpPost("{id}/read")]
-    // public async Task<IActionResult> MarkRead(string id)
-    // {
-    //     var updateReq = new UpdateItemRequest
-    //     {
-    //         TableName = "MessagesTable",
-    //         Key = new Dictionary<string, AttributeValue> { ["MessageId"] = new AttributeValue { S = id } },
-    //         ExpressionAttributeNames = new Dictionary<string, string> { ["#S"] = "Status", ["#RA"] = "ReadAt", ["#V"] = "Version" },
-    //         ExpressionAttributeValues = new Dictionary<string, AttributeValue>
-    //         {
-    //             [":read"] = new AttributeValue { S = "read" },
-    //             [":now"] = new AttributeValue { S = DateTime.UtcNow.ToString("o") },
-    //             [":one"] = new AttributeValue { N = "1" }
-    //         },
-    //         UpdateExpression = "SET #S = :read, #RA = :now, #V = if_not_exists(#V, :zero) + :one",
-    //         ConditionExpression = "attribute_not_exists(#S) OR #S <> :read"
-    //     };
+    [HttpPost("{id}/read")]
+    public async Task<IActionResult> MarkRead(string id)
+    {
+        var updateReq = new UpdateItemRequest
+        {
+            TableName = "MessagesTable",
+            Key = new Dictionary<string, AttributeValue> { ["MessageId"] = new AttributeValue { S = id } },
+            ExpressionAttributeNames = new Dictionary<string, string> { ["#S"] = "Status", ["#RA"] = "ReadAt", ["#V"] = "Version" },
+            ExpressionAttributeValues = new Dictionary<string, AttributeValue>
+            {
+                [":read"] = new AttributeValue { S = "read" },
+                [":now"] = new AttributeValue { S = DateTime.UtcNow.ToString("o") },
+                [":one"] = new AttributeValue { N = "1" }
+            },
+            UpdateExpression = "SET #S = :read, #RA = :now, #V = if_not_exists(#V, :zero) + :one",
+            ConditionExpression = "attribute_not_exists(#S) OR #S <> :read"
+        };
 
-    //     updateReq.ExpressionAttributeValues[":zero"] = new AttributeValue { N = "0" };
+        updateReq.ExpressionAttributeValues[":zero"] = new AttributeValue { N = "0" };
 
-    //     try
-    //     {
-    //         await _dynamoDb.UpdateItemAsync(updateReq);
-    //         return Ok();
-    //     }
-    //     catch (Amazon.DynamoDBv2.Model.ConditionalCheckFailedException)
-    //     {
-    //         return Ok();
-    //     }
-    // }
+        try
+        {
+            await _IAmazonDynamoDB.UpdateItemAsync(updateReq);
+            return Ok();
+        }
+        catch (Amazon.DynamoDBv2.Model.ConditionalCheckFailedException)
+        {
+            return Ok();
+        }
+    }
 
 
     /// <summary>
@@ -172,49 +170,82 @@ public class MessagesController : ControllerBase
     /// </summary>
     /// <param name="id"></param>
     /// <returns></returns>
-    // [HttpGet("{id}")]
-    // public async Task<IActionResult> GetMessage(string id)
-    // {
-    //     var msg = await _db.LoadAsync<Message>(id);
-    //     return msg == null ? NotFound() : Ok(msg);
-    // }
+    [HttpGet("{id}")]
+    public async Task<IActionResult> GetMessage(string id)
+    {
+        var msg = await _IDynamoDBContext.LoadAsync<MessageModel>(id);
+        return msg == null ? NotFound() : Ok(msg);
+    }
 
 
     /// <summary>
     /// Lista todas a mensagens
     /// </summary>
     /// <returns></returns>
-    // [HttpGet("list")]
-    // public async Task<IActionResult> List()
-    // {
-    //     var scanResponse = await _amazonDynamoDBClient.ScanAsync("MessagesTable", new List<string> { "Id", "Message", "CreatedAt" });
+    [HttpGet("list")]
+    public async Task<IActionResult> List()
+    {
+        var scanRequest = new Amazon.DynamoDBv2.Model.ScanRequest
+        {
+            TableName = "MessagesTable",
+            // It's better not to use the AttributesToGet list unless you need to
+            // because it can lead to key not found errors if items are missing attributes.
+        };
 
-    //     var items = scanResponse.Items.Select(i => new
-    //     {
-    //         Id = i["Id"].S,
-    //         Message = i["Message"].S,
-    //         CreatedAt = i["CreatedAt"].S
-    //     });
+        var scanResponse = await _IAmazonDynamoDB.ScanAsync(scanRequest);
 
-    //     return Ok(new { status = "listed", items });
-    // }
+        var items = scanResponse.Items.Select(i =>
+        {
+            // Use a forma segura de acessar as chaves do dicionário
+            i.TryGetValue("MessageId", out var messageIdAttr);
+            i.TryGetValue("ConversationId", out var conversationIdAttr);
+            i.TryGetValue("SenderId", out var senderIdAttr);
+            i.TryGetValue("RecipientId", out var recipientIdAttr);
+            i.TryGetValue("Content", out var contentAttr);
+            i.TryGetValue("SentAt", out var sentAtAttr);
+            i.TryGetValue("DeliveredAt", out var deliveredAtAttr);
+            i.TryGetValue("ReadAt", out var readAtAttr);
+            i.TryGetValue("Status", out var statusAttr);
+            i.TryGetValue("Version", out var versionAttr);
+            i.TryGetValue("IdempotencyKey", out var idempotencyKeyAttr);
+            i.TryGetValue("DeliveryAttempts", out var deliveryAttemptsAttr);
+
+            return new
+            {
+                MessageId = messageIdAttr?.S,
+                ConversationId = conversationIdAttr?.S,
+                SenderId = senderIdAttr?.S,
+                RecipientId = recipientIdAttr?.S,
+                Content = contentAttr?.S,
+                SentAt = sentAtAttr?.S,
+                DeliveredAt = deliveredAtAttr?.S,
+                ReadAt = readAtAttr?.S,
+                Status = statusAttr?.S,
+                Version = versionAttr?.S,
+                IdempotencyKey = idempotencyKeyAttr?.S,
+                DeliveryAttempts = deliveryAttemptsAttr?.S
+            };
+        });
+
+        return Ok(new { status = "listed", items });
+    }
 
 
     #region [OLD Method]
-    // [HttpPost("create")]
-    // public async Task<IActionResult> Create([FromBody] Message messageRequest)
-    // {
-    //     var item = new Dictionary<string, AttributeValue>
-    //     {
-    //         ["Id"] = new AttributeValue { S = Guid.NewGuid().ToString() },
-    //         ["Message"] = new AttributeValue { S = messageRequest.Message ?? "empty" },
-    //         ["CreatedAt"] = new AttributeValue { S = DateTime.UtcNow.ToString("o") }
-    //     };
+    [HttpPost("create")]
+    public async Task<IActionResult> Create([FromBody] MessageModel messageRequest)
+    {
+        var item = new Dictionary<string, AttributeValue>
+        {
+            ["Id"] = new AttributeValue { S = Guid.NewGuid().ToString() },
+            ["Message"] = new AttributeValue { S = messageRequest.Content ?? "empty" },
+            ["CreatedAt"] = new AttributeValue { S = DateTime.UtcNow.ToString("o") }
+        };
 
-    //     await _amazonDynamoDBClient.PutItemAsync("MessagesTable", item);
+        await _IAmazonDynamoDB.PutItemAsync("MessagesTable", item);
 
-    //     return Ok(new { status = "save", item });
-    // }
+        return Ok(new { status = "save", item });
+    }
     #endregion
 
 }

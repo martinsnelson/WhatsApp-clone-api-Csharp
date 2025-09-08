@@ -1,4 +1,6 @@
 ### MessagesController
+
+### POST - Send Message
 POST https://224kb3ec07.execute-api.sa-east-1.amazonaws.com/Prod/api/messages/send
 Content-Type: application/json
 
@@ -15,13 +17,26 @@ Content-Type: application/json
   "DeliveryAttempts": 1
 }
 
-### GET - Listar mensagens
+
+### POST - Delivered Message
+POST https://224kb3ec07.execute-api.sa-east-1.amazonaws.com/Prod/api/messages/123/delivered
+Content-Type: application/json
+
+
+### POST - Read Message
+POST https://224kb3ec07.execute-api.sa-east-1.amazonaws.com/Prod/api/messages/123/read
+Content-Type: application/json
+
+
+### GET - List Messages
 GET https://224kb3ec07.execute-api.sa-east-1.amazonaws.com/Prod/api/messages/list
 
-### GET - Listar values
+
+### GET - List values
 GET https://224kb3ec07.execute-api.sa-east-1.amazonaws.com/Prod/api/values
 
-### POST - Criar mensagem
+
+### POST - Create Message
 POST https://224kb3ec07.execute-api.sa-east-1.amazonaws.com/Prod/api/messages/create
 Content-Type: application/json
 
