@@ -453,3 +453,131 @@ src/LambdaApi/Workers/SqsDeliveryWorker.cs (Lambda handler skeleton)
 src/LambdaApi/Startup.cs (ajustes)
 sam-template.yaml (SAM: DynamoDB, SQS FIFO + DLQ, API Lambda, Delivery Lambda, roles)
 deploy/README.md (instruções de deploy e testes)
+
+
+📐 Arquitetura Atual – Sistema de Mensageria Estilo WhatsApp
+🔹 Componentes Principais
+
+1. API Gateway
+    - Exposição pública da API HTTP.
+    - Roteia chamadas dos clientes Flutter → para a Lambda de API.
+* Lambda API (ASP.NET Core)
+    - Implementada com serverless.AspNetCoreWebAPI.
+1. Oferece endpoints REST para envio de mensagens e consulta de status.
+- Publica mensagens em uma fila SQS (DeliveryQueue).
+* Persiste o estado inicial da mensagem no DynamoDB (MessagesTable).
+
+SQS (DeliveryQueue)
+
+Fila de mensagens (FIFO para garantir ordem e idempotência).
+
+Recebe mensagens da API Lambda.
+
+Ativa o processamento assíncrono pelo Worker Lambda.
+
+Lambda Worker (SqsDeliveryWorker)
+
+Trigger do SQS.
+
+Consome mensagens, processa regras de negócio, atualiza status no DynamoDB.
+
+Pode reenfileirar mensagens em caso de falha ou enviar para DLQ (Dead Letter Queue).
+
+DynamoDB (MessagesTable)
+
+Banco de dados NoSQL.
+
+Armazena mensagens com metadados: MessageId, SenderId, RecipientId, SentAt, DeliveredAt, ReadAt, Status.
+
+S3
+
+Armazena artefatos de deploy (pacotes Lambda).
+
+Armazena também possíveis anexos de mensagens (fotos, vídeos, documentos).
+
+CloudFormation / SAM
+
+Infraestrutura como código.
+
+Provisiona API Gateway, Lambdas, DynamoDB, SQS e permissões IAM.
+
+Controla versões e rollback da infra.
+
+🔹 Fluxo de Deploy
+
+Desenvolvimento
+
+Código em C# (.NET Core) → Lambda API e Worker.
+
+Templates SAM/CloudFormation → definem toda a infra.
+
+Build
+
+dotnet publish gera o pacote das Lambdas.
+
+Artefatos são enviados para S3.
+
+Deploy
+
+sam deploy --guided aplica o template.
+
+CloudFormation cria/atualiza:
+
+API Gateway
+
+Lambda API
+
+Lambda Worker
+
+SQS
+
+DynamoDB
+
+permissões IAM
+
+Resultado
+
+Infra provisionada, versão controlada e pronta para receber tráfego.
+
+🔹 Fluxo da Aplicação
+1. Envio de mensagem
+
+Cliente Flutter chama POST /messages no API Gateway.
+
+API Gateway aciona a Lambda API.
+
+Lambda API:
+
+Gera MessageId.
+
+Persiste no DynamoDB com status Sent.
+
+Publica a mensagem na SQS DeliveryQueue.
+
+Retorna 200 OK ao cliente.
+
+2. Entrega
+
+A Lambda Worker é acionada pela SQS.
+
+Worker:
+
+Lê mensagem da fila.
+
+Atualiza no DynamoDB → status Delivered.
+
+Pode acionar push notification (SNS ou Firebase).
+
+3. Leitura
+
+Quando o destinatário abre a mensagem, o app envia PUT /messages/{id}/read.
+
+API Gateway → Lambda API.
+
+Lambda API atualiza DynamoDB → status Read.
+
+4. Consulta
+
+Cliente pode consultar histórico via GET /messages.
+
+Lambda API busca no DynamoDB e retorna.
