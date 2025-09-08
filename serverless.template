@@ -1,0 +1,110 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Unified Serverless messaging API with DynamoDB + SQS
+
+Resources:
+  # Explicitly defines the API Gateway
+  LambdaApiGateway:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: ApiGateway
+      StageName: Prod
+
+  # Primary Lambda function for the API, linked to the explicit API Gateway
+  AspNetCoreFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: LambdaApi
+      Handler: LambdaApi::LambdaApi.LambdaEntryPoint::FunctionHandlerAsync
+      Runtime: dotnet8
+      CodeUri: ./src/LambdaApi/  # Project directory
+      MemorySize: 256
+      Timeout: 30
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - AmazonSQSFullAccess
+        - DynamoDBCrudPolicy:
+            TableName: !Ref MessagesTable
+        - Statement:
+              - Effect: Allow
+                Action: "sqs:CreateQueue"
+                Resource: !GetAtt DeliveryQueue.Arn
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref MessagesTable
+          DELIVERY_QUEUE_URL: !Ref DeliveryQueue
+      Events:
+        ApiGatewayProxy:
+          Type: Api
+          Properties:
+            RestApiId: !Ref LambdaApiGateway
+            Path: "/{proxy+}"
+            Method: ANY
+        ApiGatewayRoot:
+          Type: Api
+          Properties:
+            RestApiId: !Ref LambdaApiGateway
+            Path: "/"
+            Method: ANY
+
+  # Lambda worker function, triggered by SQS queue events
+  DeliveryWorker:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: SqsDeliveryWorker
+      Handler: LambdaApi.Workers::LambdaApi.Workers.::HandleAsync
+      Runtime: dotnet8
+      CodeUri: ./src/LambdaApi.Workers/ # Project directory
+      MemorySize: 256
+      Timeout: 30
+      Policies:
+        - AmazonDynamoDBFullAccess
+        - AmazonSQSFullAccess
+      Events:
+        DeliveryQueueEvent:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt DeliveryQueue.Arn
+            BatchSize: 10
+            Enabled: true
+
+  # DynamoDB table for message storage
+  MessagesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: MessagesTable
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: MessageId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: MessageId
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: ExpiresAtUnix
+        Enabled: true
+
+  # SQS queue for messages
+  DeliveryQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: DeliveryQueue.fifo
+      FifoQueue: true
+      ContentBasedDeduplication: true
+      VisibilityTimeout: 30
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt DeliveryDLQ.Arn
+        maxReceiveCount: 5
+
+  # SQS Dead-Letter Queue (DLQ) for failed messages
+  DeliveryDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: DeliveryDLQ.fifo
+      FifoQueue: true
+      ContentBasedDeduplication: true
+
+Outputs:
+  ApiURL:
+    Description: API endpoint URL for Prod environment
+    Value: !Sub "https://${LambdaApiGateway}.execute-api.${AWS::Region}.amazonaws.com/Prod/"

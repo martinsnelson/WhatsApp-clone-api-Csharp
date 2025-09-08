@@ -1,4 +1,6 @@
 ﻿using Amazon.DynamoDBv2;
+using Amazon.SQS;
+using LambdaApi.Contexts;
 
 namespace LambdaApi;
 
@@ -15,7 +17,13 @@ public class Startup
     public void ConfigureServices(IServiceCollection services)
     {
         services.AddControllers();
+
         services.AddSingleton<IAmazonDynamoDB, AmazonDynamoDBClient>(); // TODO - Validar necessidade de usar Singleton.
+        services.AddSingleton<Amazon.DynamoDBv2.DataModel.DynamoDBContext>();
+        services.AddScoped<IDynamoDBContext, DynamoDBContext>();
+        services.AddSingleton<IAmazonSQS, AmazonSQSClient>();
+
+        
         services.AddSwaggerGen();
     }
 

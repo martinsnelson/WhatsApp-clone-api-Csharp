@@ -114,21 +114,40 @@ aws s3 mb s3://deploy-whatsapp-bucket --region sa-east-1
 Tools to Deploy da Lambda:
 dotnet tool install -g Amazon.Lambda.Tools
 
-Deploy da Lambda:
-1. dotnet lambda deploy-serverless
-2. Enter CloudFormation Stack Name: cf-deploy-whatsapp
-3. cd "LambdaApi/src/LambdaApi": dotnet lambda deploy-serverless
-4. Enter S3 Bucket: deploy-whatsapp-bucket
+Deploy APP in AWS:
+1. Na raiz do seu projeto cd \lambdaapi
+2. Run:
+    ```
+    dotnet lambda deploy-serverless
+    ```
+3. Enter CloudFormation Stack Name: (CloudFormation stack name for an AWS Serverless application)
+    ```
+    cf-deploy-whatsapp
+    ```
+4. Enter CloudFormation Template: (Path to the CloudFormation template)
+    ```
+    serverless.template
+    ```
+5. Enter S3 Bucket: (S3 bucket to upload the build output)
+    ```
+    deploy-whatsapp-bucket
+    ```
 
 Install templates:
-dotnet new install Amazon.Lambda.Templates
+1. dotnet new install Amazon.Lambda.Templates
+2. dotnet tool install -g Amazon.Lambda.Tools
+3. dotnet tool update -g Amazon.Lambda.Tools
+4. dotnet tool uninstall -g Amazon.Lambda.Tools
 
-Create project:
+Create projects:
 dotnet new serverless.AspNetCoreWebAPI --name LambdaApi
+dotnet new worker -n LambdaApi.Workers
 
 Packages Add:
 dotnet add package AWSSDK.DynamoDBv2
 dotnet add package Swashbuckle.AspNetCore
+dotnet add package AWSSDK.SQS
+dotnet add package Amazon.Lambda.SQSEvents
 
 Run APP with SLN:
 1. dotnet restore LambdaApi.sln
@@ -263,3 +282,174 @@ sentAt	Timestamp de envio	Servidor confiável
 deliveredAt	Timestamp de entrega	Mantido sem acessar conteúdo
 readAt	Timestamp de leitura	Opcional, respeitando privacidade
 status	sent/delivered/read	Atualizado com recibos criptografados
+
+
+Solução robusta Arquitetura
+Flutter (persist local + queue) 
+   ⇩ (HTTPS)
+API Gateway -> Lambda API (.NET) -> DynamoDB (Messages table)
+                                 ↳ SQS FIFO (delivery pipeline) -> Lambda (deliver to device via push/WebSocket)
+                                 ↳ DynamoDB Streams -> Lambda (reconciliação / auditing)
+SNS / FCM / APNs for push
+CloudWatch + DLQ + alarms
+
+Principais garantias:
+Idempotência: evitar duplicação de mensagens/ops.
+Entrega com retries + DLQ: SQS FIFO + DLQ para at-least-once + ordenação por conversa.
+Controle de versão / concorrência otimista: evitar sobrescritas de status regressivas.
+Reconciliation: job que reconcilia mensagens em estados inconsistentes.
+Client-first durability: app persiste mensagens localmente até confirmação (ACK).
+
+
+Modelagem da tabela (DynamoDB):
+
+[DynamoDBTable("MessagesTable")]
+public class Message
+[DynamoDBHashKey]
+public string MessageId { get; set; } = Guid.NewGuid().ToString();
+
+public string ConversationId { get; set; }
+public string SenderId { get; set; }
+public string RecipientId { get; set; }
+
+// O conteúdo é criptografado no cliente; aqui é apenas um blob cifrado
+public string Content { get; set; }
+
+public DateTime SentAt { get; set; } = DateTime.UtcNow;
+public DateTime? DeliveredAt { get; set; }
+public DateTime? ReadAt { get; set; }
+
+public string Status { get; set; } = "sent"; // sent, delivered, read, dead
+
+public int Version { get; set; } = 0; // optimistic concurrency
+public string IdempotencyKey { get; set; }
+public int DeliveryAttempts { get; set; } = 0;
+
+// TTL (Unix epoch seconds) - DynamoDB TTL enabled on ExpiresAtUnix
+public long? ExpiresAtUnix { get; set; }
+
+
+Idempotência no envio (server-side)
+Cliente sempre gera MessageId e IdempotencyKey (podem ser iguais).
+No servidor, use PutItem com ConditionExpression para attribute_not_exists(MessageId) — evita duplicatas se o cliente reenviar.
+Exemplo com PutItemAsync (low-level) ou DynamoDBContext com TransactWrite:
+
+// usando low-level PutItem com condição
+var request = new PutItemRequest
+{
+    TableName = "MessagesTable",
+    Item = new Dictionary<string, AttributeValue>
+    {
+        ["MessageId"] = new AttributeValue { S = message.MessageId },
+        ["ConversationId"] = new AttributeValue { S = message.ConversationId },
+        // ... outros atributos
+        ["IdempotencyKey"] = new AttributeValue { S = message.IdempotencyKey }
+    },
+    ConditionExpression = "attribute_not_exists(MessageId)"
+};
+
+try
+{
+    await dynamoDb.PutItemAsync(request);
+}
+catch (ConditionalCheckFailedException)
+{
+    // já existe -> idempotente: retornar existente (ou OK)
+}
+
+
+
+Atualização de status com controle de versão (evitar regressões)
+Use Version (integer) ou timestamps e ConditionExpression para permitir apenas upgrades de status (sent → delivered → read).
+Exemplo: só atualize para delivered se Status <> 'delivered' AND Status <> 'read' ou se DeliveredAt < :new.
+(ajuste :read e :zero como necessário). A ideia: condição que impede downgrade.
+
+var updateRequest = new UpdateItemRequest
+{
+    TableName = "MessagesTable",
+    Key = new Dictionary<string, AttributeValue> { ["MessageId"] = new AttributeValue { S = id } },
+    ExpressionAttributeNames = new Dictionary<string,string>
+    {
+        ["#S"] = "Status",
+        ["#DA"] = "DeliveredAt",
+        ["#V"] = "Version"
+    },
+    ExpressionAttributeValues = new Dictionary<string,AttributeValue>
+    {
+        [":del"] = new AttributeValue { S = "delivered" },
+        [":now"] = new AttributeValue { S = DateTime.UtcNow.ToString("o") },
+        [":one"] = new AttributeValue { N = "1" }
+    },
+    UpdateExpression = "SET #S = :del, #DA = :now, #V = if_not_exists(#V, :zero) + :one",
+    ConditionExpression = "attribute_not_exists(#S) OR #S <> :del AND #S <> :read",
+};
+
+
+Pipeline de entrega confiável (SQS FIFO + DLQ):
+
+Em vez de enviar diretamente ao dispositivo, publique um evento (delivery job) em SQS FIFO com MessageGroupId = ConversationId e MessageDeduplicationId = MessageId/IdempotencyKey.
+Um consumer Lambda processa fila:
+Tenta enviar via push (FCM/APNs) ou WebSocket.
+Se sucesso → chama endpoint /{id}/delivered (ou atualiza DynamoDB).
+Se falha → reenqueue (SQS faz retry) até maxReceiveCount → DLQ.
+SQS FIFO garante ordenação por conversa e deduplicação.
+
+
+Garantia no client (Flutter):
+Persistir mensagens em storage local (sqflite) com status local: queued → sending → sent → delivered → read.
+Gerenciar uma fila local: se envio falhar, retry com backoff + jitter; reenvio idempotente usando MessageId.
+Ao criar mensagem, somente remove local quando receber ACK do servidor (200 + persisted).
+Use WebSockets (API Gateway WebSocket) ou push notifications para receber delivery/read updates “em tempo real”.
+
+
+Reconciliation e recuperação:
+Job (Lambda) periódico:
+Escaneia mensagens com status = sent ou delivered e DeliveryAttempts < N → reenqueue para SQS.
+Marca dead após TTL / limite de tentativas (e coloca em DLQ para auditoria).
+Use DynamoDB Streams para acionar auditoria e sincronização entre replicas se tiver mais de uma store.
+
+
+Observabilidade e alarmes:
+Publique métricas no CloudWatch:
+mensagens recebidas/salvas
+entregas bem-sucedidas
+mensagens em DLQ
+latência de entrega
+Configure alarms para: aumento de mensagens em DLQ, taxa de falhas de envio, crescimento de DeliveryAttempts.
+
+
+Segurança e privacidade:
+Conteúdo sempre criptografado no cliente; servidor só armazena blob cifrado.
+Receipts e metadados: armazenar mínimos necessários e aplicar retenção/TTL.
+IAM: Lambdas só com permissões necessárias (principle of least privilege).
+GDPR / LGPD: TTL para remoção e endpoints para exclusão de mensagens.
+
+
+Exemplos concretos (C#) — snippets práticos:
+SendMessage com idempotência (DynamoDB Put com condição) + enfileirar SQS
+MarkDelivered com condição (evitar regressão)
+
+
+Grupo / multi-recipient
+Mantenha uma tabela DeliveryStatus por (MessageId, RecipientId) para registrar status por usuário em grupo.
+Use transações (DynamoDB TransactWrite) para gravar mensagem + registros de delivery atomically se necessário.
+
+
+Recomendações operacionais rápidas:
+Use SQS FIFO para pipeline de entrega (ordenado + dedup).
+Use DLQ para não perder mensagens e auditar falhas.
+TTL (DynamoDB) para mensagens expiradas (ex.: ExpiresAtUnix).
+Backoff exponencial no client e no worker com jitter.
+Testes de falha: simule dispositivos offline, perda de push, latência, e verifique reconciler.
+
+
+Este documento contém o conjunto de alterações sugeridas para transformar seu LambdaApi em uma solução robusta de mensagens com idempotência, SQS FIFO para entrega confiável, reconciliação, e DynamoDB com controle de versão.
+
+Arquivos incluídos:
+src/LambdaApi/Models/Message.cs
+src/LambdaApi/Controllers/MessagesController.cs
+src/LambdaApi/Services/DeliveryQueueService.cs
+src/LambdaApi/Workers/SqsDeliveryWorker.cs (Lambda handler skeleton)
+src/LambdaApi/Startup.cs (ajustes)
+sam-template.yaml (SAM: DynamoDB, SQS FIFO + DLQ, API Lambda, Delivery Lambda, roles)
+deploy/README.md (instruções de deploy e testes)

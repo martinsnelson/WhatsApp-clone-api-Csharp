@@ -2,7 +2,7 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": ".NET 8 LambdaApi Launch",
+            "name": "LambdaApi Launch",
             "type": "coreclr",
             "request": "launch",
             "preLaunchTask": "Build Solution",
@@ -15,6 +15,17 @@
                 "action": "openExternally",
                 "pattern": "\\bNow listening on:\\s+(https?://\\S+)"
             }
+        },
+        {
+            "name": "Worker LambdaApi.Worker Launch",
+            "type": "coreclr",
+            "request": "launch",
+            "preLaunchTask": "Build Solution",
+            "program": "${workspaceFolder}/src/LambdaApi.Workers/bin/Debug/net8.0/LambdaApi.Workers.dll",
+            "args": [],
+            "cwd": "${workspaceFolder}/src/LambdaApi.Workers",
+            "stopAtEntry": false,
+            "console": "internalConsole"
         }
     ]
 }

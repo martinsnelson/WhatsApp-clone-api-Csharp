@@ -1,4 +1,19 @@
 ### MessagesController
+POST https://224kb3ec07.execute-api.sa-east-1.amazonaws.com/Prod/api/messages/send
+Content-Type: application/json
+
+{
+  "MessageId": "a1b2c3d4-e5f6-7890-1234-567890abcdef",
+  "ConversationId": "conversa-da-turma-do-trabalho",
+  "SenderId": "joao-super-chato",
+  "RecipientId": "bia-a-melhor",
+  "Content": "E aee, vamo tomar uma depois do trampo? 😎",
+  "SentAt": "2025-09-08T18:30:00Z",
+  "Status": "enviada",
+  "Version": 1,
+  "IdempotencyKey": "tentando-nao-dar-erro-de-novo",
+  "DeliveryAttempts": 1
+}
 
 ### GET - Listar mensagens
 GET https://224kb3ec07.execute-api.sa-east-1.amazonaws.com/Prod/api/messages/list
